@@ -284,6 +284,12 @@ body{font-family:'Times New Roman',Times,serif;background:var(--bg);color:var(--
       </div>
     </div>
 
+    <!-- TAB: NPS -->
+    <div id="tab-nps" style="display:none;"></div>
+
+    <!-- TAB: PROCESS -->
+    <div id="tab-process" style="display:none;"></div>
+
     <!-- TAB: RESPONSES -->
     <div id="tab-responses" style="display:none;">
       <div class="resp-card" id="resp-table-wrap"></div>
@@ -730,7 +736,7 @@ function renderRespTable(data){
 }
 
 function getNPS(data){
-  const scores=data.map(r=>+r.nps).filter(v=>!isNaN(v)&&v>=0);
+  const scores=data.map(r=>+(r.nps||r.NPS||"")).filter(v=>!isNaN(v)&&v>=0&&v<=10);
   if(!scores.length)return{score:null,promote:0,neutral:0,detract:0};
   const promote=scores.filter(v=>v>=9).length;
   const neutral=scores.filter(v=>v>=7&&v<=8).length;
@@ -740,11 +746,15 @@ function getNPS(data){
 }
 
 function renderNPS(data){
+  if(!data.length){
+    document.getElementById("tab-nps").innerHTML='<div class="empty-state"><div class="big">📭</div><p>Хариулт байхгүй байна.</p></div>';
+    return;
+  }
   const nps=getNPS(data);
-  const loyal=avg(data.map(r=>+r.loyal).filter(v=>v>0));
+  const loyal=avg(data.map(r=>+r.loyal).filter(v=>!isNaN(v)&&v>0));
   const loyalPct=loyal>0?((loyal-1)/4*100).toFixed(1):null;
   const npsDist=Array(11).fill(0);
-  data.forEach(r=>{const v=+r.nps;if(v>=0&&v<=10)npsDist[v]++;});
+  data.forEach(r=>{const v=+r.nps;if(!isNaN(v)&&v>=0&&v<=10)npsDist[v]++;});
 
   document.getElementById("tab-nps").innerHTML=`
     <div class="kpi-grid">
@@ -780,6 +790,10 @@ function renderNPS(data){
 }
 
 function renderProcess(data){
+  if(!data.length){
+    document.getElementById("tab-process").innerHTML='<div class="empty-state"><div class="big">📭</div><p>Хариулт байхгүй байна.</p></div>';
+    return;
+  }
   const counts={};
   PROC_OPTIONS.forEach(o=>counts[o]=0);
   data.forEach(r=>{
