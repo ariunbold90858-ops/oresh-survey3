@@ -166,6 +166,16 @@ body{font-family:'Times New Roman',Times,serif;background:var(--bg);color:var(--
 /* Chart grid */
 .charts-2col{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 @media(max-width:640px){.charts-2col{grid-template-columns:1fr;}}
+.kpi.nps-card .kpi-val{font-size:36px;}
+.kpi.nps-promote{color:#16a34a;}
+.kpi.nps-neutral{color:var(--amber);}
+.kpi.nps-detract{color:var(--red);}
+.proc-bar-item{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.proc-bar-item:last-child{border-bottom:none;}
+.proc-label{min-width:140px;color:var(--text);}
+.proc-bar-track{flex:1;height:18px;background:var(--bg);border-radius:4px;overflow:hidden;}
+.proc-bar-fill{height:100%;background:var(--green);border-radius:4px;transition:width .6s;display:flex;align-items:center;justify-content:flex-end;padding-right:4px;font-size:11px;color:#fff;font-weight:700;}
+.proc-count{min-width:40px;text-align:right;color:var(--muted);font-size:12px;}
 </style>
 </head>
 <body>
@@ -226,6 +236,8 @@ body{font-family:'Times New Roman',Times,serif;background:var(--bg);color:var(--
     <div class="tabs">
       <button class="tab active" onclick="showTab('overview')">Нийт үзүүлэлт</button>
       <button class="tab" onclick="showTab('sections')">Хэлтэс тус бүр</button>
+      <button class="tab" onclick="showTab('nps')">NPS & Үнэнч байдал</button>
+      <button class="tab" onclick="showTab('process')">Процессийн саад</button>
       <button class="tab" onclick="showTab('responses')">Хариултууд</button>
     </div>
 
@@ -316,6 +328,8 @@ const SECTIONS = [
   {key:"u",label:"III. Үйл ажиллагааны алба",ids:["u1","u2","u3","u4","u5"],color:"#854f0b"},
 ];
 const STAR_IDS = SECTIONS.flatMap(s=>s.ids);
+const PROC_OPTIONS = ["Төлбөр","Захиалга","Бараа хүлээн авах","Гэрээ","Vendor System","Харилцаа холбоо","Бусад"];
+
 
 // ══ STORAGE ══
 let cachedData = [];
@@ -453,13 +467,17 @@ function showDash(){
 let activeTab="overview";
 function showTab(t){
   activeTab=t;
+  const tabNames=["overview","sections","nps","process","responses"];
   document.querySelectorAll(".tab").forEach((b,i)=>{
-    b.classList.toggle("active",["overview","sections","responses"][i]===t);
+    b.classList.toggle("active",tabNames[i]===t);
   });
-  ["tab-overview","tab-sections","tab-responses"].forEach(id=>{
-    document.getElementById(id).style.display=id.includes(t)?"":"none";
+  tabNames.forEach(name=>{
+    const el=document.getElementById("tab-"+name);
+    if(el)el.style.display=name===t?"":"none";
   });
   if(t==="sections")renderSectionCharts();
+  if(t==="nps")renderNPS(getResp());
+  if(t==="process")renderProcess(getResp());
 }
 
 // ══ HELPERS ══
@@ -502,6 +520,7 @@ function renderDash(){
       return `<div class="kpi"><div class="kpi-val" style="color:${s.color}">${sc.length?a.toFixed(2):"—"}</div><div class="kpi-sub">${sc.length?stars(a):""}</div><div class="kpi-lbl" style="font-size:10px;">${s.label.replace("I. ","").replace("II. ","").replace("III. ","")}</div></div>`;
     }).join("")}
     <div class="kpi"><div class="kpi-val" style="font-size:16px;">${lastDate}</div><div class="kpi-lbl">Сүүлийн хариулт</div></div>
+    <div class="kpi nps-card"><div class="kpi-val" style="color:${(()=>{let sc=data.map(r=>+r.nps).filter(v=>!isNaN(v)&&v>=0);if(!sc.length)return'var(--muted)';let p=sc.filter(v=>v>=9).length,d=sc.filter(v=>v<=6).length;let s=Math.round((p-d)/sc.length*100);return s>=0?'#16a34a':'#dc2626';})()}">${(()=>{let sc=data.map(r=>+r.nps).filter(v=>!isNaN(v)&&v>=0);if(!sc.length)return'—';let p=sc.filter(v=>v>=9).length,d=sc.filter(v=>v<=6).length;return Math.round((p-d)/sc.length*100);})()}</div><div class="kpi-lbl">NPS Score</div></div>
   `;
 
   if(total===0){
@@ -545,7 +564,7 @@ function renderDash(){
   // Trend line chart
   destroyChart("trend");
   const byDate={};
-  data.forEach(r=>{if(!byDate[r._date])byDate[r._date]=[];byDate[r._date].push(r);});
+  data.forEach(r=>{const d=(r.timestamp||r._date||"").split(",")[0]||"?";if(!byDate[d])byDate[d]=[];byDate[d].push(r);});
   const dates=Object.keys(byDate).sort();
   const trendAvgs=dates.map(d=>{
     let sc=[];byDate[d].forEach(r=>STAR_IDS.forEach(id=>{if(r[id])sc.push(+r[id]);}));
@@ -709,6 +728,88 @@ function renderRespTable(data){
     </table></div>
     ${textCards ? `<div style="margin-top:1.5rem;"><div style="font-size:14px;font-weight:700;color:var(--green);margin-bottom:12px;">💬 Нэмэлт санал хүсэлтүүд</div>${textCards}</div>` : ""}`;
 }
+
+function getNPS(data){
+  const scores=data.map(r=>+r.nps).filter(v=>!isNaN(v)&&v>=0);
+  if(!scores.length)return{score:null,promote:0,neutral:0,detract:0};
+  const promote=scores.filter(v=>v>=9).length;
+  const neutral=scores.filter(v=>v>=7&&v<=8).length;
+  const detract=scores.filter(v=>v<=6).length;
+  const n=scores.length;
+  return{score:Math.round((promote-detract)/n*100),promote:Math.round(promote/n*100),neutral:Math.round(neutral/n*100),detract:Math.round(detract/n*100),n};
+}
+
+// ══ DASHBOARD ══
+let charts={};
+function renderNPS(data){
+  const nps=getNPS(data);
+  const loyal=avg(data.map(r=>+r.loyal).filter(v=>v>0));
+  const loyalPct=loyal>0?((loyal-1)/4*100).toFixed(1):null;
+
+  // NPS distribution
+  const npsDist=Array(11).fill(0);
+  data.forEach(r=>{const v=+r.nps;if(v>=0&&v<=10)npsDist[v]++;});
+
+  document.getElementById("tab-nps").innerHTML=`
+    <div class="kpi-grid">
+      <div class="kpi nps-card"><div class="kpi-val" style="color:${nps.score>=0?"#16a34a":"#dc2626"}">${nps.score!==null?nps.score:"—"}</div><div class="kpi-lbl">NPS Score</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#16a34a">${nps.promote}%</div><div class="kpi-lbl">Promoters (9-10)</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#d97706">${nps.neutral}%</div><div class="kpi-lbl">Passives (7-8)</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#dc2626">${nps.detract}%</div><div class="kpi-lbl">Detractors (0-6)</div></div>
+      <div class="kpi"><div class="kpi-val">${loyal>0?loyal.toFixed(2):"—"}</div><div class="kpi-sub">${loyal>0?starsStr(loyal):""}</div><div class="kpi-lbl">Хамтран ажиллах сонирхол</div></div>
+      <div class="kpi"><div class="kpi-val">${loyalPct!==null?loyalPct+"%":"—"}</div><div class="kpi-lbl">Үнэнч байдлын индекс</div></div>
+    </div>
+    <div class="charts-2col">
+      <div class="chart-card"><div class="chart-title">NPS тархалт (0–10)</div><canvas id="ch-nps-dist" height="220"></canvas></div>
+      <div class="chart-card"><div class="chart-title">NPS бүлгийн харьцаа</div><canvas id="ch-nps-pie" height="220"></canvas></div>
+    </div>`;
+
+  if(!data.length)return;
+  destroyChart("nps-dist");
+  charts["nps-dist"]=new Chart(document.getElementById("ch-nps-dist"),{type:"bar",data:{labels:[0,1,2,3,4,5,6,7,8,9,10].map(String),datasets:[{data:npsDist,backgroundColor:[0,1,2,3,4,5,6].map(()=>"#ef4444cc").concat(["#eab308cc","#eab308cc","#22c55ecc","#22c55ecc"]),borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+
+  destroyChart("nps-pie");
+  charts["nps-pie"]=new Chart(document.getElementById("ch-nps-pie"),{type:"doughnut",data:{labels:["Promoters","Passives","Detractors"],datasets:[{data:[nps.promote,nps.neutral,nps.detract],backgroundColor:["#22c55e","#eab308","#ef4444"],borderWidth:2}]},options:{responsive:true,plugins:{legend:{position:"bottom"}}}});
+}
+
+function renderProcess(data){
+  const counts={};
+  PROC_OPTIONS.forEach(o=>counts[o]=0);
+  data.forEach(r=>{
+    const procs=r.proc?r.proc.split(", "):[];
+    procs.forEach(p=>{
+      const key=p.startsWith("Бусад:")?p:p;
+      if(counts[key]!==undefined)counts[key]++;
+      else if(p.startsWith("Бусад"))counts["Бусад"]=(counts["Бусад"]||0)+1;
+    });
+  });
+  const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  const max=sorted[0]?sorted[0][1]:1;
+
+  const bars=sorted.map(([label,cnt])=>`
+    <div class="proc-bar-item">
+      <div class="proc-label">${label}</div>
+      <div class="proc-bar-track">
+        <div class="proc-bar-fill" style="width:${max?cnt/max*100:0}%">${cnt>0?cnt:""}</div>
+      </div>
+      <div class="proc-count">${cnt} удаа</div>
+    </div>`).join("");
+
+  document.getElementById("tab-process").innerHTML=`
+    <div class="chart-card">
+      <div class="chart-title">Хамгийн их хүндрэл үүсгэдэг процессийн рейтинг</div>
+      <canvas id="ch-proc" height="200"></canvas>
+    </div>
+    <div class="detail-card">
+      <div class="detail-title">Дэлгэрэнгүй тоо</div>
+      ${bars}
+    </div>`;
+
+  if(!data.length)return;
+  destroyChart("proc");
+  charts["proc"]=new Chart(document.getElementById("ch-proc"),{type:"bar",data:{labels:sorted.map(s=>s[0]),datasets:[{data:sorted.map(s=>s[1]),backgroundColor:"#1a5c2acc",borderColor:"#1a5c2a",borderWidth:1.5,borderRadius:5}]},options:{responsive:true,indexAxis:"y",plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}});
+}
+
 
 // ══ CSV ══
 function exportCSV(){
